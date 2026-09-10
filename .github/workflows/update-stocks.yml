@@ -47,24 +47,24 @@ jobs:
 
           echo ""
           echo "=========================================="
-          echo "scraper.py"
+          echo "test_stock.py"
           echo "=========================================="
-          ls -la scraper.py
+          ls -la test_stock.py
 
       # ==============================
-      # 4. 執行股票資料抓取
+      # 4. 執行股票資料測試
       # ==============================
-      - name: 執行 scraper
+      - name: 執行股票資料測試
         run: |
           echo "=========================================="
-          echo "開始執行 scraper.py"
+          echo "開始執行 test_stock.py"
           echo "=========================================="
 
-          python scraper.py
+          python test_stock.py
 
           echo ""
           echo "=========================================="
-          echo "scraper.py 執行完成"
+          echo "test_stock.py 執行完成"
           echo "=========================================="
 
       # ==============================
@@ -105,7 +105,7 @@ jobs:
             echo "✗ 沒有找到 data/test_result.json"
 
             echo ""
-            echo "請檢查 scraper.py 是否成功執行。"
+            echo "請檢查 test_stock.py 是否成功執行。"
 
             exit 1
 
