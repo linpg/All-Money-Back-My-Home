@@ -22,11 +22,14 @@ jobs:
           echo "目前目錄："
           pwd
 
-          echo "檔案列表："
+          echo "根目錄檔案："
           ls -la
 
           echo "data 目錄："
           ls -la data || true
+
+          echo "scraper.py："
+          ls -la scraper.py
 
       - name: 執行 scraper
         run: |
@@ -34,12 +37,27 @@ jobs:
 
       - name: 檢查抓取結果
         run: |
-          echo "檢查 test_result.json"
-          ls -la test_result.json
-          cat test_result.json
+          echo "目前目錄："
+          pwd
+
+          echo "所有 JSON："
+          find . -name "*.json" -type f -print
+
+          echo "檢查 test_result.json："
+
+          if [ -f test_result.json ]; then
+            echo "✓ 找到 test_result.json"
+            cat test_result.json
+          else
+            echo "✗ 沒有找到 test_result.json"
+            echo "請檢查 scraper.py 是否成功執行"
+            exit 1
+          fi
 
       - name: 保存測試結果
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: stock-test-result
           path: test_result.json
+          if-no-files-found: warn
