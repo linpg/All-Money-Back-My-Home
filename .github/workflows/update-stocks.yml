@@ -1,1 +1,28 @@
 
+name: 台股資料測試
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 下載專案
+        uses: actions/checkout@v4
+
+      - name: 設定 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 執行 3501 維熹資料測試
+        run: |
+          python scraper.py
+
+      - name: 保存測試結果
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-test-result
+          path: test_result.json
