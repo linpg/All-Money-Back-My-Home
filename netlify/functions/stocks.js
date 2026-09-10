@@ -1,136 +1,46 @@
+export default async () => {
 
-export default async (request) => {
+    const stock = {
+        code: "3501",
+        name: "維熹",
 
-    const STOCK_CODE = "3501";
+        // 先放測試資料
+        // 等確認 Netlify 連線成功後，再接 Norway / Goodinfo
+        price: null,
+        dividendYield: null,
+        roe: null,
+        pe: null,
 
-    const NORWAY_URL =
-        `https://norway.twsthr.info/StockHolders.aspx?STOCK=${STOCK_CODE}`;
+        fundamentalScore: null,
+        growthScore: null,
+        trendScore: null,
+        chipScore: null,
 
-    const GOODINFO_URL =
-        `https://goodinfo.tw/tw/StockBasicInfo.asp?STOCK_ID=${STOCK_CODE}`;
+        themes: ["測試"],
 
-
-    const headers = {
-        "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-            "AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Chrome/131.0.0.0 Safari/537.36",
-
-        "Accept":
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-
-        "Accept-Language":
-            "zh-TW,zh;q=0.9,en;q=0.8",
-
-        "Cache-Control":
-            "no-cache"
-    };
-
-
-    async function testSource(name, url) {
-
-        try {
-
-            const response = await fetch(url, {
-                method: "GET",
-                headers: headers,
-                redirect: "follow"
-            });
-
-
-            const text = await response.text();
-
-
-            return {
-
-                source: name,
-
-                success: response.ok,
-
-                status: response.status,
-
-                content_type:
-                    response.headers.get("content-type") || "",
-
-                length: text.length,
-
-                preview:
-                    text
-                        .replace(/<[^>]+>/g, " ")
-                        .replace(/\s+/g, " ")
-                        .trim()
-                        .slice(0, 500)
-
-            };
-
-
-        } catch (error) {
-
-            return {
-
-                source: name,
-
-                success: false,
-
-                status: 0,
-
-                error: error.message
-
-            };
-
-        }
-
-    }
-
-
-    const norway = await testSource(
-        "Norway 股權分散",
-        NORWAY_URL
-    );
-
-
-    const goodinfo = await testSource(
-        "Goodinfo 財務資料",
-        GOODINFO_URL
-    );
-
-
-    const result = {
-
-        ok: true,
-
-        updated_at:
-            new Date().toISOString(),
-
-        stock: {
-
-            code: STOCK_CODE,
-
-            name: "維熹"
-
+        chips: {
+            over400: null,
+            over1000: null,
+            shareholders: null
         },
 
-        norway: norway,
-
-        goodinfo: goodinfo
-
+        analysis: "Netlify Function 已正常運作，等待接入即時資料。"
     };
 
+    const result = {
+        ok: true,
+
+        updated_at: new Date().toISOString(),
+
+        stocks: [stock]
+    };
 
     return new Response(
-
-        JSON.stringify(
-            result,
-            null,
-            2
-        ),
-
+        JSON.stringify(result, null, 2),
         {
-
             status: 200,
 
             headers: {
-
                 "Content-Type":
                     "application/json; charset=UTF-8",
 
@@ -139,11 +49,7 @@ export default async (request) => {
 
                 "Cache-Control":
                     "no-store"
-
             }
-
         }
-
     );
-
 };
