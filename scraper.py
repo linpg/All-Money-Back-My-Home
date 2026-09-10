@@ -6,68 +6,67 @@ from datetime import datetime, timezone
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
+
 # =========================================================
 # 基本設定
 # =========================================================
 
-STOCKS = [
-    {
-        "code": "3501",
-        "name": "維熹",
-    }
-]
+STOCK_CODE = "3501"
+STOCK_NAME = "維熹"
 
 NORWAY_URL = (
-    "https://norway.twsthr.info/StockHolders.aspx"
+    f"https://norway.twsthr.info/StockHolders.aspx"
+    f"?STOCK={STOCK_CODE}"
 )
 
 GOODINFO_URL = (
-    "https://goodinfo.tw/tw/StockBasicInfo.asp"
+    f"https://goodinfo.tw/tw/StockBasicInfo.asp"
+    f"?STOCK_ID={STOCK_CODE}"
 )
 
-OUTPUT_FILE = "data/stocks.json"
+
+# =========================================================
+# Request Headers
+# =========================================================
 
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/131.0.0.0 Safari/537.36"
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
+        "Chrome/128.0.0.0 Safari/537.36"
     ),
     "Accept": (
         "text/html,application/xhtml+xml,"
-        "application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+        "application/xml;q=0.9,image/avif,image/webp,"
+        "*/*;q=0.8"
     ),
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
     "Connection": "keep-alive",
 }
 
-# GitHub Actions / Linux 的 SSL 環境
+
+# =========================================================
+# SSL
+# =========================================================
+
 SSL_CONTEXT = ssl.create_default_context()
 
 
 # =========================================================
-# 網頁下載
+# HTML 下載
 # =========================================================
 
-def fetch_html(url, referer=None):
-    """
-    下載網頁 HTML。
-
-    會依序嘗試 UTF-8 / Big5 / CP950。
-    """
-
-    headers = dict(HEADERS)
-
-    if referer:
-        headers["Referer"] = referer
+def fetch_html(url):
 
     request = Request(
         url,
-        headers=headers,
+        headers=HEADERS,
         method="GET"
     )
 
     try:
+
         with urlopen(
             request,
             timeout=30,
@@ -76,78 +75,102 @@ def fetch_html(url, referer=None):
 
             data = response.read()
 
+            status = response.status
+
             content_type = response.headers.get(
                 "Content-Type",
                 ""
             )
 
-            print("HTTP:", response.status)
-            print("Content-Type:", content_type)
-            print("Bytes:", len(data))
+            final_url = response.geturl()
+
+        # 嘗試多種編碼
+        html = None
+        used_encoding = None
+
+        for encoding in (
+            "utf-8",
+            "cp950",
+            "big5",
+            "big5hkscs"
+        ):
+
+            try:
+
+                html = data.decode(encoding)
+
+                used_encoding = encoding
+
+                break
+
+            except UnicodeDecodeError:
+
+                continue
+
+        if html is None:
+
+            html = data.decode(
+                "utf-8",
+                errors="ignore"
+            )
+
+            used_encoding = "utf-8-ignore"
+
+
+        return {
+            "success": True,
+            "status": status,
+            "content_type": content_type,
+            "final_url": final_url,
+            "encoding": used_encoding,
+            "html": html,
+            "bytes": len(data)
+        }
+
 
     except HTTPError as error:
 
-        print(
-            f"HTTP ERROR {error.code}: {error.reason}"
-        )
+        return {
+            "success": False,
+            "error_type": "HTTPError",
+            "status": error.code,
+            "error": str(error),
+            "html": ""
+        }
 
-        return None
 
     except URLError as error:
 
-        print(
-            "URL ERROR:",
-            error.reason
-        )
+        return {
+            "success": False,
+            "error_type": "URLError",
+            "error": str(error),
+            "html": ""
+        }
 
-        return None
 
     except Exception as error:
 
-        print(
-            "FETCH ERROR:",
-            type(error).__name__,
-            str(error)
-        )
-
-        return None
-
-    # 嘗試不同編碼
-    for encoding in (
-        "utf-8",
-        "big5",
-        "cp950"
-    ):
-
-        try:
-            return data.decode(
-                encoding
-            )
-
-        except UnicodeDecodeError:
-            continue
-
-    return data.decode(
-        "utf-8",
-        errors="ignore"
-    )
+        return {
+            "success": False,
+            "error_type": type(error).__name__,
+            "error": str(error),
+            "html": ""
+        }
 
 
 # =========================================================
-# HTML 清理
+# 清理 HTML
 # =========================================================
 
-def clean_html_text(html):
-    """
-    把 HTML 轉成比較容易閱讀的純文字。
-    """
+def clean_text(html):
 
     if not html:
         return ""
 
     # 移除 script
     html = re.sub(
-        r"<script\b[^>]*>.*?</script>",
+        r"<script.*?</script>",
         " ",
         html,
         flags=re.I | re.S
@@ -155,567 +178,268 @@ def clean_html_text(html):
 
     # 移除 style
     html = re.sub(
-        r"<style\b[^>]*>.*?</style>",
+        r"<style.*?</style>",
         " ",
         html,
         flags=re.I | re.S
     )
 
-    # 換行標籤
+    # 移除 HTML tag
     html = re.sub(
-        r"<br\s*/?>",
-        "\n",
-        html,
-        flags=re.I
-    )
-
-    html = re.sub(
-        r"</tr\s*>",
-        "\n",
-        html,
-        flags=re.I
-    )
-
-    html = re.sub(
-        r"</td\s*>",
-        "\t",
-        html,
-        flags=re.I
-    )
-
-    html = re.sub(
-        r"</th\s*>",
-        "\t",
-        html,
-        flags=re.I
-    )
-
-    # 移除其他 HTML 標籤
-    text = re.sub(
         r"<[^>]+>",
         " ",
         html
     )
 
     # HTML entities
-    text = (
-        text
-        .replace("&nbsp;", " ")
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&#39;", "'")
-        .replace("&quot;", '"')
-    )
+    html = html.replace("&nbsp;", " ")
+    html = html.replace("&amp;", "&")
+    html = html.replace("&gt;", ">")
+    html = html.replace("&lt;", "<")
 
-    # 清理空白
-    text = re.sub(
-        r"[ \t]+",
+    # 空白整理
+    html = re.sub(
+        r"\s+",
         " ",
-        text
+        html
     )
 
-    text = re.sub(
-        r"\n\s*\n+",
-        "\n",
-        text
-    )
-
-    return text.strip()
+    return html.strip()
 
 
 # =========================================================
-# 數字工具
+# 判斷頁面是否真的有股票資料
 # =========================================================
 
-def parse_number(value):
-    """
-    將文字轉成數字。
-
-    例如：
-    4.52 -> 4.52
-    12.5% -> 12.5
-    1,234 -> 1234
-    """
-
-    if value is None:
-        return None
-
-    value = str(value).strip()
-
-    if not value:
-        return None
-
-    # 括號負數
-    negative = False
-
-    if value.startswith("(") and value.endswith(")"):
-        negative = True
-        value = value[1:-1]
-
-    # 移除千分位
-    value = value.replace(",", "")
-
-    # 移除百分比
-    value = value.replace("%", "")
-
-    # 移除常見貨幣符號
-    value = value.replace("NT$", "")
-    value = value.replace("元", "")
-
-    # 找第一個數字
-    match = re.search(
-        r"-?\d+(?:\.\d+)?",
-        value
-    )
-
-    if not match:
-        return None
-
-    number = float(
-        match.group()
-    )
-
-    if negative:
-        number = -number
-
-    return number
-
-
-# =========================================================
-# 從文字尋找數值
-# =========================================================
-
-def find_value_by_labels(text, labels):
-    """
-    嘗試從網頁文字中尋找：
-
-    EPS 4.52
-    ROE 10.8%
-    殖利率 5.2%
-
-    由於不同網站版面可能變化，
-    這裡只做初步解析。
-    """
-
-    if not text:
-        return None
-
-    for label in labels:
-
-        pattern = (
-            re.escape(label)
-            + r"\s*[:：]?\s*"
-            r"([\-]?\d+(?:,\d{3})*(?:\.\d+)?)"
-            r"\s*%?"
-        )
-
-        match = re.search(
-            pattern,
-            text,
-            flags=re.I
-        )
-
-        if match:
-
-            return parse_number(
-                match.group(1)
-            )
-
-    return None
-
-
-# =========================================================
-# Goodinfo
-# =========================================================
-
-def fetch_goodinfo(stock):
-    """
-    取得 Goodinfo 基本頁。
-
-    注意：
-    這一版先把網頁抓回來並做初步欄位解析。
-
-    如果 Goodinfo 改版或防爬，
-    後面可以再針對實際 HTML 結構調整。
-    """
-
-    code = stock["code"]
-
-    url = (
-        GOODINFO_URL
-        + "?STOCK_ID="
-        + code
-    )
-
-    print()
-    print("=" * 70)
-    print("GOODINFO")
-    print(stock["code"], stock["name"])
-    print(url)
-    print("=" * 70)
-
-    html = fetch_html(url)
+def detect_stock_content(
+    html,
+    code,
+    name
+):
 
     if not html:
 
         return {
-            "success": False,
-            "url": url,
-            "error": "無法取得 Goodinfo 網頁"
+            "found_code": False,
+            "found_name": False,
+            "looks_like_stock_page": False
         }
 
-    print(
-        "Goodinfo HTML 長度:",
-        len(html)
-    )
+    text = clean_text(html)
 
-    text = clean_html_text(html)
+    found_code = code in text
 
-    print(
-        "Goodinfo 文字長度:",
-        len(text)
-    )
+    found_name = name in text
 
-    # -----------------------------------------------------
-    # 初步尋找欄位
-    # -----------------------------------------------------
-
-    price = find_value_by_labels(
-        text,
-        [
-            "成交價",
-            "收盤價",
-            "股價",
-        ]
-    )
-
-    eps = find_value_by_labels(
-        text,
-        [
-            "EPS",
-            "每股盈餘",
-        ]
-    )
-
-    roe = find_value_by_labels(
-        text,
-        [
-            "ROE",
-            "股東權益報酬率",
-        ]
-    )
-
-    dividend = find_value_by_labels(
-        text,
-        [
-            "殖利率",
-            "現金殖利率",
-        ]
-    )
-
-    pe = find_value_by_labels(
-        text,
-        [
-            "本益比",
-            "PE",
-        ]
-    )
-
-    # -----------------------------------------------------
-    # 判斷是不是被擋
-    # -----------------------------------------------------
-
-    blocked_keywords = [
-        "Access Denied",
-        "403 Forbidden",
-        "Too Many Requests",
-        "驗證碼",
-        "機器人",
-        "blocked"
+    keywords = [
+        "股東",
+        "持股",
+        "財務",
+        "營收",
+        "EPS",
+        "ROE",
+        "殖利率",
+        "本益比"
     ]
 
-    blocked = any(
-        keyword.lower()
-        in html.lower()
-        for keyword in blocked_keywords
+    keyword_count = 0
+
+    for keyword in keywords:
+
+        if keyword in text:
+
+            keyword_count += 1
+
+
+    looks_like_stock_page = (
+        found_code
+        or found_name
+        or keyword_count >= 2
     )
 
-    return {
-        "success": True,
-        "url": url,
-        "html_length": len(html),
-        "text_length": len(text),
-        "blocked": blocked,
-        "raw_preview": text[:1000],
 
-        "price": price,
-        "eps": eps,
-        "roe": roe,
-        "dividend": dividend,
-        "pe": pe,
+    return {
+        "found_code": found_code,
+        "found_name": found_name,
+        "keyword_count": keyword_count,
+        "looks_like_stock_page": looks_like_stock_page,
+        "text_length": len(text)
     }
 
 
 # =========================================================
-# Norway
+# 測試單一網站
 # =========================================================
 
-def fetch_norway(stock):
-    """
-    取得 Norway 股權分散頁。
-
-    目前先取得完整 HTML，
-    再從文字中尋找可能的股東資料。
-
-    後續可以依 Norway 實際表格欄位
-    精確解析大戶級距。
-    """
-
-    code = stock["code"]
-
-    url = (
-        NORWAY_URL
-        + "?STOCK="
-        + code
-    )
+def test_source(
+    source_name,
+    url
+):
 
     print()
     print("=" * 70)
-    print("NORWAY")
-    print(stock["code"], stock["name"])
+    print(source_name)
+    print("=" * 70)
+
+    print("URL:")
     print(url)
-    print("=" * 70)
 
-    html = fetch_html(url)
+    result = {
+        "source": source_name,
+        "url": url,
+        "success": False,
+        "status": None,
+        "content_type": "",
+        "encoding": "",
+        "html_length": 0,
+        "text_length": 0,
+        "found_code": False,
+        "found_name": False,
+        "looks_like_stock_page": False,
+        "error": None
+    }
 
-    if not html:
 
-        return {
-            "success": False,
-            "url": url,
-            "error": "無法取得 Norway 網頁"
-        }
+    response = fetch_html(url)
+
+
+    if not response["success"]:
+
+        print()
+        print("❌ 網頁取得失敗")
+
+        print(
+            "錯誤類型:",
+            response.get("error_type")
+        )
+
+        print(
+            "錯誤:",
+            response.get("error")
+        )
+
+        result["error"] = response.get("error")
+
+        result["error_type"] = response.get(
+            "error_type"
+        )
+
+        result["status"] = response.get(
+            "status"
+        )
+
+        return result
+
+
+    html = response["html"]
+
+    print()
+    print("HTTP Status:")
+    print(response["status"])
 
     print(
-        "Norway HTML 長度:",
+        "Content-Type:",
+        response["content_type"]
+    )
+
+    print(
+        "Encoding:",
+        response["encoding"]
+    )
+
+    print(
+        "HTML bytes:",
+        response["bytes"]
+    )
+
+    print(
+        "HTML length:",
         len(html)
     )
 
-    text = clean_html_text(html)
+
+    detection = detect_stock_content(
+        html,
+        STOCK_CODE,
+        STOCK_NAME
+    )
+
+
+    print()
+    print(
+        "找到股票代號:",
+        "🟢 是"
+        if detection["found_code"]
+        else "🔴 否"
+    )
 
     print(
-        "Norway 文字長度:",
-        len(text)
+        "找到股票名稱:",
+        "🟢 是"
+        if detection["found_name"]
+        else "🔴 否"
     )
 
-    blocked_keywords = [
-        "Access Denied",
-        "403 Forbidden",
-        "Too Many Requests",
-        "驗證碼",
-        "機器人",
-        "blocked"
-    ]
-
-    blocked = any(
-        keyword.lower()
-        in html.lower()
-        for keyword in blocked_keywords
+    print(
+        "疑似股票頁面:",
+        "🟢 是"
+        if detection["looks_like_stock_page"]
+        else "🔴 否"
     )
 
-    # -----------------------------------------------------
-    # 嘗試尋找股東人數
-    # -----------------------------------------------------
-
-    shareholders = find_value_by_labels(
-        text,
-        [
-            "股東人數",
-            "股東總人數",
-            "總股東人數",
-        ]
+    print(
+        "關鍵字數量:",
+        detection["keyword_count"]
     )
 
-    return {
+
+    text = clean_text(html)
+
+
+    print()
+    print("文字長度:")
+    print(len(text))
+
+
+    print()
+    print("前 300 字:")
+    print(text[:300])
+
+
+    result.update({
+
         "success": True,
-        "url": url,
-        "html_length": len(html),
-        "text_length": len(text),
-        "blocked": blocked,
 
-        "shareholders": shareholders,
+        "status": response["status"],
 
-        # 暫時保留前段文字，
-        # 方便 GitHub Actions 測試解析結果
-        "raw_preview": text[:2000],
-    }
+        "content_type":
+            response["content_type"],
 
+        "encoding":
+            response["encoding"],
 
-# =========================================================
-# 分析評分
-# =========================================================
+        "html_length":
+            len(html),
 
-def calculate_fundamental_score(goodinfo):
+        "text_length":
+            len(text),
 
-    score = 50
+        "found_code":
+            detection["found_code"],
 
-    roe = goodinfo.get("roe")
-    eps = goodinfo.get("eps")
-    dividend = goodinfo.get("dividend")
+        "found_name":
+            detection["found_name"],
 
-    if roe is not None:
+        "looks_like_stock_page":
+            detection["looks_like_stock_page"],
 
-        if roe >= 15:
-            score += 20
+        "keyword_count":
+            detection["keyword_count"]
 
-        elif roe >= 10:
-            score += 12
-
-        elif roe >= 5:
-            score += 5
-
-        elif roe < 0:
-            score -= 20
-
-    if eps is not None:
-
-        if eps > 5:
-            score += 15
-
-        elif eps > 2:
-            score += 8
-
-        elif eps < 0:
-            score -= 15
-
-    if dividend is not None:
-
-        if dividend >= 6:
-            score += 15
-
-        elif dividend >= 4:
-            score += 10
-
-        elif dividend >= 2:
-            score += 5
-
-    return max(
-        0,
-        min(100, score)
-    )
+    })
 
 
-def calculate_chip_score(norway):
-
-    if not norway.get("success"):
-        return 50
-
-    if norway.get("blocked"):
-        return 50
-
-    # 現階段 Norway 尚未精確解析所有級距，
-    # 因此先使用中性分數。
-    return 50
-
-
-def calculate_growth_score(goodinfo):
-
-    # 第一版不亂猜成長性。
-    # 等營收 / EPS 年增資料接上後再計算。
-    return 50
-
-
-def calculate_trend_score(stock):
-
-    # 第一版先保持中性。
-    # 後面加入價格、成交量、均線後再計算。
-    return 50
-
-
-# =========================================================
-# 建立股票資料
-# =========================================================
-
-def process_stock(stock):
-
-    print()
-    print()
-    print("#" * 70)
-    print(
-        "開始分析:",
-        stock["code"],
-        stock["name"]
-    )
-    print("#" * 70)
-
-    goodinfo = fetch_goodinfo(stock)
-
-    # 避免連續請求太快
-    time.sleep(2)
-
-    norway = fetch_norway(stock)
-
-    fundamental_score = (
-        calculate_fundamental_score(
-            goodinfo
-        )
-    )
-
-    chip_score = (
-        calculate_chip_score(
-            norway
-        )
-    )
-
-    growth_score = (
-        calculate_growth_score(
-            goodinfo
-        )
-    )
-
-    trend_score = (
-        calculate_trend_score(
-            stock
-        )
-    )
-
-    overall_score = round(
-        fundamental_score * 0.30
-        + chip_score * 0.20
-        + growth_score * 0.25
-        + trend_score * 0.25
-    )
-
-    return {
-        "code": stock["code"],
-        "name": stock["name"],
-
-        "updated_at": datetime.now(
-            timezone.utc
-        ).isoformat(),
-
-        "goodinfo": goodinfo,
-
-        "norway": norway,
-
-        "analysis": {
-            "fundamental_score":
-                fundamental_score,
-
-            "chip_score":
-                chip_score,
-
-            "growth_score":
-                growth_score,
-
-            "trend_score":
-                trend_score,
-
-            "overall_score":
-                overall_score
-        }
-    }
+    return result
 
 
 # =========================================================
@@ -726,24 +450,87 @@ def main():
 
     print()
     print("=" * 70)
-    print("台股資料抓取系統")
-    print("Norway + Goodinfo")
+    print("台股資料抓取測試")
     print("=" * 70)
-    print()
 
-    results = {}
+    print(
+        "股票:",
+        STOCK_CODE,
+        STOCK_NAME
+    )
 
-    for stock in STOCKS:
+    print(
+        "時間:",
+        datetime.now(
+            timezone.utc
+        ).isoformat()
+    )
 
-        result = process_stock(
-            stock
-        )
+    print("=" * 70)
 
-        results[
-            stock["code"]
-        ] = result
 
-    # 確保 data 資料夾存在
+    # -----------------------------------------------------
+    # Norway
+    # -----------------------------------------------------
+
+    norway = test_source(
+        "Norway 股權分散資料",
+        NORWAY_URL
+    )
+
+
+    # 避免連續請求太快
+    time.sleep(2)
+
+
+    # -----------------------------------------------------
+    # Goodinfo
+    # -----------------------------------------------------
+
+    goodinfo = test_source(
+        "Goodinfo 財務資料",
+        GOODINFO_URL
+    )
+
+
+    # -----------------------------------------------------
+    # 最終結果
+    # -----------------------------------------------------
+
+    result = {
+
+        "updated_at":
+            datetime.now(
+                timezone.utc
+            ).isoformat(),
+
+        "stock": {
+
+            "code":
+                STOCK_CODE,
+
+            "name":
+                STOCK_NAME
+
+        },
+
+        "sources": {
+
+            "norway":
+                norway,
+
+            "goodinfo":
+                goodinfo
+
+        }
+
+    }
+
+
+    # -----------------------------------------------------
+    # 建立 data 資料夾
+    # -----------------------------------------------------
+
     import os
 
     os.makedirs(
@@ -751,77 +538,109 @@ def main():
         exist_ok=True
     )
 
-    output = {
-        "updated_at":
-            datetime.now(
-                timezone.utc
-            ).isoformat(),
 
-        "source": {
-            "norway":
-                "https://norway.twsthr.info/",
-            "goodinfo":
-                "https://goodinfo.tw/tw/"
-        },
+    # -----------------------------------------------------
+    # 寫入 JSON
+    # -----------------------------------------------------
 
-        "stocks": results
-    }
+    output_file = (
+        "data/test_result.json"
+    )
+
 
     with open(
-        OUTPUT_FILE,
+        output_file,
         "w",
         encoding="utf-8"
     ) as file:
 
         json.dump(
-            output,
+            result,
             file,
             ensure_ascii=False,
             indent=2
         )
 
+
+    # -----------------------------------------------------
+    # 最終判斷
+    # -----------------------------------------------------
+
+    norway_ok = (
+        norway.get("success")
+        and norway.get(
+            "looks_like_stock_page"
+        )
+    )
+
+    goodinfo_ok = (
+        goodinfo.get("success")
+        and goodinfo.get(
+            "looks_like_stock_page"
+        )
+    )
+
+
     print()
     print("=" * 70)
-    print("完成")
-    print(
-        "資料已寫入:",
-        OUTPUT_FILE
-    )
+    print("測試結果")
     print("=" * 70)
+
+
+    print(
+        "Norway:",
+        "🟢 OK"
+        if norway_ok
+        else "🔴 FAIL"
+    )
+
+
+    print(
+        "Goodinfo:",
+        "🟢 OK"
+        if goodinfo_ok
+        else "🔴 FAIL"
+    )
+
 
     print()
     print(
-        "股票數量:",
-        len(results)
+        "結果檔案:",
+        output_file
     )
 
-    for code, result in results.items():
+
+    # -----------------------------------------------------
+    # GitHub Actions 判斷
+    # -----------------------------------------------------
+
+    if not norway_ok or not goodinfo_ok:
 
         print()
         print(
-            code,
-            result["name"]
+            "⚠️ 至少一個資料來源沒有通過測試。"
         )
 
         print(
-            "Goodinfo:",
-            "成功"
-            if result["goodinfo"].get("success")
-            else "失敗"
+            "目前先不要接前端，"
+            "請先確認抓取結果。"
         )
 
-        print(
-            "Norway:",
-            "成功"
-            if result["norway"].get("success")
-            else "失敗"
-        )
+        # 不直接 exit 1
+        # 讓 GitHub Actions 可以保存 test_result.json
+        return
 
-        print(
-            "綜合分數:",
-            result["analysis"]["overall_score"]
-        )
 
+    print()
+    print(
+        "🟢 Norway + Goodinfo 測試通過"
+    )
+
+
+# =========================================================
+# 執行
+# =========================================================
 
 if __name__ == "__main__":
+
     main()
