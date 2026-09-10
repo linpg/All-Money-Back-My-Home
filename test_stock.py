@@ -1,4 +1,3 @@
-
 import json
 import re
 import ssl
@@ -40,12 +39,18 @@ HEADERS = {
     ),
     "Accept": (
         "text/html,application/xhtml+xml,"
-        "application/xml;q=0.9,*/*;q=0.8"
+        "application/xml;q=0.9,image/avif,image/webp,"
+        "*/*;q=0.8"
     ),
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
     "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
 }
 
+
+# =========================================================
+# SSL
+# =========================================================
 
 SSL_CONTEXT = ssl.create_default_context()
 
@@ -81,25 +86,30 @@ def fetch_html(url):
 
             final_url = response.geturl()
 
-        # 嘗試解碼
-        html = None
-        encoding_used = None
 
-        for encoding in [
+        # 嘗試不同編碼
+        html = None
+        used_encoding = None
+
+        for encoding in (
             "utf-8",
             "cp950",
             "big5",
             "big5hkscs"
-        ]:
+        ):
 
             try:
 
                 html = data.decode(encoding)
-                encoding_used = encoding
+
+                used_encoding = encoding
+
                 break
 
             except UnicodeDecodeError:
+
                 pass
+
 
         if html is None:
 
@@ -108,44 +118,48 @@ def fetch_html(url):
                 errors="ignore"
             )
 
-            encoding_used = "utf-8-ignore"
+            used_encoding = "utf-8-ignore"
+
 
         return {
             "success": True,
             "status": status,
             "content_type": content_type,
             "final_url": final_url,
-            "encoding": encoding_used,
+            "encoding": used_encoding,
             "html": html,
             "bytes": len(data)
         }
+
 
     except HTTPError as error:
 
         return {
             "success": False,
-            "status": error.code,
             "error_type": "HTTPError",
+            "status": error.code,
             "error": str(error),
             "html": ""
         }
+
 
     except URLError as error:
 
         return {
             "success": False,
-            "status": 0,
             "error_type": "URLError",
+            "status": 0,
             "error": str(error),
             "html": ""
         }
+
 
     except Exception as error:
 
         return {
             "success": False,
-            "status": 0,
             "error_type": type(error).__name__,
+            "status": 0,
             "error": str(error),
             "html": ""
         }
@@ -195,15 +209,29 @@ def clean_text(html):
 
 
 # =========================================================
-# 判斷是否為股票頁面
+# 判斷是否真的取得股票資料
 # =========================================================
 
 def detect_stock_content(html):
 
+    if not html:
+
+        return {
+            "found_code": False,
+            "found_name": False,
+            "keyword_count": 0,
+            "looks_like_stock_page": False,
+            "text_length": 0
+        }
+
+
     text = clean_text(html)
 
+
     found_code = STOCK_CODE in text
+
     found_name = STOCK_NAME in text
+
 
     keywords = [
         "股東",
@@ -213,13 +241,19 @@ def detect_stock_content(html):
         "EPS",
         "ROE",
         "殖利率",
-        "本益比"
+        "本益比",
+        "股利"
     ]
 
-    keyword_count = sum(
-        1 for keyword in keywords
-        if keyword in text
-    )
+
+    keyword_count = 0
+
+    for keyword in keywords:
+
+        if keyword in text:
+
+            keyword_count += 1
+
 
     looks_like_stock_page = (
         found_code
@@ -227,90 +261,124 @@ def detect_stock_content(html):
         or keyword_count >= 2
     )
 
+
     return {
         "found_code": found_code,
         "found_name": found_name,
         "keyword_count": keyword_count,
         "looks_like_stock_page": looks_like_stock_page,
-        "text_length": len(text),
-        "preview": text[:500]
+        "text_length": len(text)
     }
 
 
 # =========================================================
-# 測試資料來源
+# 測試來源
 # =========================================================
 
-def test_source(name, url):
+def test_source(source_name, url):
 
     print()
-    print("=" * 60)
-    print(name)
-    print("=" * 60)
+    print("=" * 70)
+    print(source_name)
+    print("=" * 70)
 
-    print("URL:", url)
+    print("URL:")
+    print(url)
 
-    response = fetch_html(url)
 
     result = {
-        "source": name,
+        "source": source_name,
         "url": url,
         "success": False,
-        "status": response.get("status"),
-        "content_type": response.get("content_type", ""),
-        "encoding": response.get("encoding", ""),
+        "status": None,
+        "content_type": "",
+        "encoding": "",
         "html_length": 0,
         "text_length": 0,
         "found_code": False,
         "found_name": False,
         "looks_like_stock_page": False,
         "keyword_count": 0,
-        "preview": "",
         "error": None
     }
 
+
+    response = fetch_html(url)
+
+
     if not response["success"]:
 
+        print()
         print("❌ 網頁取得失敗")
-        print("錯誤類型:", response.get("error_type"))
-        print("錯誤:", response.get("error"))
+
+        print(
+            "錯誤類型:",
+            response.get("error_type")
+        )
+
+        print(
+            "錯誤:",
+            response.get("error")
+        )
+
 
         result["error"] = response.get("error")
-        result["error_type"] = response.get("error_type")
+
+        result["error_type"] = response.get(
+            "error_type"
+        )
+
+        result["status"] = response.get(
+            "status"
+        )
 
         return result
 
+
     html = response["html"]
+
+
+    print()
+    print("HTTP Status:")
+    print(response["status"])
+
+    print(
+        "Content-Type:",
+        response["content_type"]
+    )
+
+    print(
+        "Encoding:",
+        response["encoding"]
+    )
+
+    print(
+        "HTML bytes:",
+        response["bytes"]
+    )
+
+    print(
+        "HTML length:",
+        len(html)
+    )
+
 
     detection = detect_stock_content(html)
 
-    result.update({
-        "success": True,
-        "html_length": len(html),
-        "text_length": detection["text_length"],
-        "found_code": detection["found_code"],
-        "found_name": detection["found_name"],
-        "looks_like_stock_page":
-            detection["looks_like_stock_page"],
-        "keyword_count":
-            detection["keyword_count"],
-        "preview":
-            detection["preview"]
-    })
 
-    print("HTTP Status:", response.get("status"))
-    print("Encoding:", response.get("encoding"))
-    print("HTML length:", len(html))
-    print("文字長度:", detection["text_length"])
-
+    print()
     print(
         "找到股票代號:",
-        "🟢 是" if detection["found_code"] else "🔴 否"
+        "🟢 是"
+        if detection["found_code"]
+        else "🔴 否"
     )
 
     print(
         "找到股票名稱:",
-        "🟢 是" if detection["found_name"] else "🔴 否"
+        "🟢 是"
+        if detection["found_name"]
+        else "🔴 否"
     )
 
     print(
@@ -320,9 +388,58 @@ def test_source(name, url):
         else "🔴 否"
     )
 
+    print(
+        "關鍵字數量:",
+        detection["keyword_count"]
+    )
+
+
+    text = clean_text(html)
+
+
+    print()
+    print("文字長度:")
+    print(len(text))
+
+
     print()
     print("前 500 字:")
-    print(detection["preview"])
+    print(text[:500])
+
+
+    result.update({
+
+        "success": True,
+
+        "status":
+            response["status"],
+
+        "content_type":
+            response["content_type"],
+
+        "encoding":
+            response["encoding"],
+
+        "html_length":
+            len(html),
+
+        "text_length":
+            len(text),
+
+        "found_code":
+            detection["found_code"],
+
+        "found_name":
+            detection["found_name"],
+
+        "looks_like_stock_page":
+            detection["looks_like_stock_page"],
+
+        "keyword_count":
+            detection["keyword_count"]
+
+    })
+
 
     return result
 
@@ -333,9 +450,10 @@ def test_source(name, url):
 
 def main():
 
-    print("=" * 60)
-    print("台股資料來源測試")
-    print("=" * 60)
+    print()
+    print("=" * 70)
+    print("台股資料抓取測試")
+    print("=" * 70)
 
     print(
         "股票:",
@@ -345,54 +463,13 @@ def main():
 
     print(
         "時間:",
-        datetime.now(timezone.utc).isoformat()
+        datetime.now(
+            timezone.utc
+        ).isoformat()
     )
 
-    # -----------------------------------------------------
-    # 最重要：
-    # 先建立 data 資料夾
-    # -----------------------------------------------------
+    print("=" * 70)
 
-    os.makedirs(
-        "data",
-        exist_ok=True
-    )
-
-    output_file = "data/test_result.json"
-
-    # -----------------------------------------------------
-    # 先建立一個初始結果
-    # 即使程式中途出問題，也有檔案可以查看
-    # -----------------------------------------------------
-
-    initial_result = {
-        "ok": False,
-        "updated_at":
-            datetime.now(timezone.utc).isoformat(),
-        "stock": {
-            "code": STOCK_CODE,
-            "name": STOCK_NAME
-        },
-        "sources": {},
-        "message": "測試開始"
-    }
-
-    with open(
-        output_file,
-        "w",
-        encoding="utf-8"
-    ) as file:
-
-        json.dump(
-            initial_result,
-            file,
-            ensure_ascii=False,
-            indent=2
-        )
-
-    print()
-    print("✓ 已建立初始結果檔:")
-    print(output_file)
 
     # -----------------------------------------------------
     # Norway
@@ -403,7 +480,13 @@ def main():
         NORWAY_URL
     )
 
+
+    # -----------------------------------------------------
+    # 等待 2 秒
+    # -----------------------------------------------------
+
     time.sleep(2)
+
 
     # -----------------------------------------------------
     # Goodinfo
@@ -414,56 +497,59 @@ def main():
         GOODINFO_URL
     )
 
+
     # -----------------------------------------------------
     # 最終結果
     # -----------------------------------------------------
-
-    norway_ok = (
-        norway.get("success")
-        and norway.get("looks_like_stock_page")
-    )
-
-    goodinfo_ok = (
-        goodinfo.get("success")
-        and goodinfo.get("looks_like_stock_page")
-    )
 
     result = {
 
         "ok": True,
 
         "updated_at":
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(
+                timezone.utc
+            ).isoformat(),
 
         "stock": {
-            "code": STOCK_CODE,
-            "name": STOCK_NAME
+
+            "code":
+                STOCK_CODE,
+
+            "name":
+                STOCK_NAME
+
         },
 
         "sources": {
 
-            "norway": norway,
+            "norway":
+                norway,
 
-            "goodinfo": goodinfo
-
-        },
-
-        "summary": {
-
-            "norway_ok": norway_ok,
-
-            "goodinfo_ok": goodinfo_ok,
-
-            "all_sources_ok":
-                norway_ok and goodinfo_ok
+            "goodinfo":
+                goodinfo
 
         }
 
     }
 
+
     # -----------------------------------------------------
-    # 寫入結果
+    # 建立 data 資料夾
     # -----------------------------------------------------
+
+    os.makedirs(
+        "data",
+        exist_ok=True
+    )
+
+
+    # -----------------------------------------------------
+    # 寫入測試結果
+    # -----------------------------------------------------
+
+    output_file = "data/test_result.json"
+
 
     with open(
         output_file,
@@ -478,10 +564,32 @@ def main():
             indent=2
         )
 
+
+    # -----------------------------------------------------
+    # 最終判斷
+    # -----------------------------------------------------
+
+    norway_ok = (
+        norway.get("success")
+        and norway.get(
+            "looks_like_stock_page"
+        )
+    )
+
+
+    goodinfo_ok = (
+        goodinfo.get("success")
+        and goodinfo.get(
+            "looks_like_stock_page"
+        )
+    )
+
+
     print()
-    print("=" * 60)
-    print("測試完成")
-    print("=" * 60)
+    print("=" * 70)
+    print("測試結果")
+    print("=" * 70)
+
 
     print(
         "Norway:",
@@ -490,6 +598,7 @@ def main():
         else "🔴 FAIL"
     )
 
+
     print(
         "Goodinfo:",
         "🟢 OK"
@@ -497,12 +606,41 @@ def main():
         else "🔴 FAIL"
     )
 
-    print()
-    print("✓ 結果檔案:")
-    print(output_file)
 
     print()
-    print("✓ 不論資料來源成功或失敗，test_result.json 都會存在。")
+    print(
+        "結果檔案:",
+        output_file
+    )
+
+
+    print()
+    print("=" * 70)
+    print("test_stock.py 執行完成")
+    print("=" * 70)
+
+
+    # 這裡故意不 exit 1
+    # 即使來源網站擋住，也要讓 test_result.json 被保存
+
+    if not norway_ok or not goodinfo_ok:
+
+        print()
+        print(
+            "⚠️ 至少一個資料來源沒有通過測試。"
+        )
+
+        print(
+            "但是 test_result.json 已經建立。"
+        )
+
+        return
+
+
+    print()
+    print(
+        "🟢 Norway + Goodinfo 測試通過"
+    )
 
 
 # =========================================================
@@ -510,4 +648,5 @@ def main():
 # =========================================================
 
 if __name__ == "__main__":
+
     main()
