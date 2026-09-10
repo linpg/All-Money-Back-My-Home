@@ -25,4 +25,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: stock-test-result
-          path: test_result.json
+       path: data/test_result.json
