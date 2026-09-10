@@ -1,1 +1,79 @@
 
+name: 台股資料測試
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: 下載專案
+        uses: actions/checkout@v4
+
+      - name: 設定 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安裝 requests
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests
+
+      - name: 確認檔案
+        run: |
+          echo "=========================================="
+          echo "目前目錄"
+          echo "=========================================="
+          pwd
+
+          echo ""
+          echo "專案檔案："
+          ls -la
+
+          echo ""
+          echo "確認 test_stock.py："
+          ls -la test_stock.py
+
+          echo ""
+          echo "確認 data 目錄："
+          ls -la data || true
+
+      - name: 執行股票資料測試
+        run: |
+          echo "=========================================="
+          echo "開始執行 test_stock.py"
+          echo "=========================================="
+
+          python test_stock.py
+
+          echo ""
+          echo "=========================================="
+          echo "test_stock.py 執行完成"
+          echo "=========================================="
+
+      - name: 檢查抓取結果
+        run: |
+          echo "=========================================="
+          echo "檢查 test_result.json"
+          echo "=========================================="
+
+          if [ -f data/test_result.json ]; then
+            echo "✓ 找到 data/test_result.json"
+            echo ""
+            cat data/test_result.json
+          else
+            echo "✗ 沒有找到 data/test_result.json"
+            exit 1
+          fi
+
+      - name: 保存測試結果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-test-result
+          path: data/test_result.json
+          if-no-files-found: warn
