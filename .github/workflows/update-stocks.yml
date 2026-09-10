@@ -9,55 +9,115 @@ jobs:
 
     steps:
 
+      # ==============================
+      # 1. 下載 GitHub 專案
+      # ==============================
       - name: 下載專案
         uses: actions/checkout@v4
 
+      # ==============================
+      # 2. 設定 Python
+      # ==============================
       - name: 設定 Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # ==============================
+      # 3. 確認專案檔案
+      # ==============================
       - name: 確認專案檔案
         run: |
-          echo "目前目錄："
+          echo "=========================================="
+          echo "目前目錄"
+          echo "=========================================="
           pwd
 
-          echo "根目錄檔案："
+          echo ""
+          echo "=========================================="
+          echo "根目錄檔案"
+          echo "=========================================="
           ls -la
 
-          echo "data 目錄："
+          echo ""
+          echo "=========================================="
+          echo "data 目錄"
+          echo "=========================================="
           ls -la data || true
 
-          echo "scraper.py："
+          echo ""
+          echo "=========================================="
+          echo "scraper.py"
+          echo "=========================================="
           ls -la scraper.py
 
+      # ==============================
+      # 4. 執行股票資料抓取
+      # ==============================
       - name: 執行 scraper
         run: |
+          echo "=========================================="
+          echo "開始執行 scraper.py"
+          echo "=========================================="
+
           python scraper.py
 
+          echo ""
+          echo "=========================================="
+          echo "scraper.py 執行完成"
+          echo "=========================================="
+
+      # ==============================
+      # 5. 檢查資料結果
+      # ==============================
       - name: 檢查抓取結果
         run: |
-          echo "目前目錄："
+          echo "=========================================="
+          echo "目前目錄"
+          echo "=========================================="
           pwd
 
-          echo "所有 JSON："
+          echo ""
+          echo "=========================================="
+          echo "所有 JSON 檔案"
+          echo "=========================================="
+
           find . -name "*.json" -type f -print
 
-          echo "檢查 test_result.json："
+          echo ""
+          echo "=========================================="
+          echo "檢查 data/test_result.json"
+          echo "=========================================="
 
-          if [ -f test_result.json ]; then
-            echo "✓ 找到 test_result.json"
-            cat test_result.json
+          if [ -f data/test_result.json ]; then
+
+            echo "✓ 找到 data/test_result.json"
+
+            echo ""
+            echo "=========================================="
+            echo "test_result.json 內容"
+            echo "=========================================="
+
+            cat data/test_result.json
+
           else
-            echo "✗ 沒有找到 test_result.json"
-            echo "請檢查 scraper.py 是否成功執行"
+
+            echo "✗ 沒有找到 data/test_result.json"
+
+            echo ""
+            echo "請檢查 scraper.py 是否成功執行。"
+
             exit 1
+
           fi
 
+      # ==============================
+      # 6. 保存測試結果
+      # ==============================
       - name: 保存測試結果
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: stock-test-result
-          path: test_result.json
+          path: data/test_result.json
           if-no-files-found: warn
