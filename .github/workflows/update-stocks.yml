@@ -1,4 +1,3 @@
-
 name: 台股資料測試
 
 on:
@@ -9,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: 下載專案
         uses: actions/checkout@v4
 
@@ -17,12 +17,29 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 執行 3501 維熹資料測試
+      - name: 確認專案檔案
+        run: |
+          echo "目前目錄："
+          pwd
+
+          echo "檔案列表："
+          ls -la
+
+          echo "data 目錄："
+          ls -la data || true
+
+      - name: 執行 scraper
         run: |
           python scraper.py
+
+      - name: 檢查抓取結果
+        run: |
+          echo "檢查 test_result.json"
+          ls -la test_result.json
+          cat test_result.json
 
       - name: 保存測試結果
         uses: actions/upload-artifact@v4
         with:
           name: stock-test-result
-       path: data/test_result.json
+          path: test_result.json
